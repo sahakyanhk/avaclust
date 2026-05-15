@@ -32,7 +32,7 @@ import time
 from collections import defaultdict
 
 import numpy as np
-from scipy.cluster.hierarchy import linkage, fcluster
+from scipy.cluster.hierarchy import linkage, fcluster, to_tree, leaves_list, optimal_leaf_ordering
 from scipy.spatial.distance import squareform
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -77,6 +77,11 @@ def parse_args():
     p.add_argument(
         "-sc", "--sort-clusters", default=None,
         help="Directory for aligned cluster PDBs"
+    )
+    p.add_argument(
+        "--optimal-leaf-order", action="store_true",
+        help="Apply optimal leaf ordering to the dendrogram (better for heatmap visualization, "
+             "slower for large N)"
     )
     p.add_argument(
         "--pdb-dir", default=None,
@@ -206,6 +211,10 @@ def cluster_and_assign(dist, names, args):
     condensed = squareform(dist)
     Z = linkage(condensed, method=args.linkage)
 
+    if args.optimal_leaf_order:
+        print("Applying optimal leaf ordering...", file=sys.stderr)
+        Z = optimal_leaf_ordering(Z, condensed)
+
     if args.k is not None:
         k = args.k
         print(f"Using user-specified k={k}", file=sys.stderr)
@@ -253,13 +262,80 @@ def cluster_and_assign(dist, names, args):
 
     # Sort clusters by size (largest first)
     result.sort(key=len, reverse=True)
-    return result
+    return result, Z
 
 
 def write_output(clusters, names, out):
     """Write clusters in wide format (one line per cluster, centroid first)."""
     for members in clusters:
         out.write(" ".join(names[m] for m in members) + "\n")
+
+
+def linkage_to_newick(Z, names):
+    """Convert a scipy linkage matrix to a Newick string with branch lengths."""
+    tree = to_tree(Z, rd=False)
+
+    def _build(node, parent_height):
+        branch = parent_height - node.dist
+        if node.is_leaf():
+            return f"{names[node.id]}:{branch:.6f}"
+        left = _build(node.get_left(), node.dist)
+        right = _build(node.get_right(), node.dist)
+        return f"({left},{right}):{branch:.6f}"
+
+    if tree.is_leaf():
+        return f"{names[tree.id]};"
+    left = _build(tree.get_left(), tree.dist)
+    right = _build(tree.get_right(), tree.dist)
+    return f"({left},{right});"
+
+
+def write_newick(Z, names, path):
+    """Write the dendrogram in Newick format."""
+    with open(path, "w") as fh:
+        fh.write(linkage_to_newick(Z, names) + "\n")
+    print(f"Wrote {path}", file=sys.stderr)
+
+
+def write_ordered_matrix(Z, dist, names, path):
+    """
+    Write the TM-score matrix reordered to match the dendrogram leaf order.
+    Row/column labels follow the order produced by leaves_list(Z), so the
+    matrix lines up with the tree when plotted side-by-side.
+    """
+    order = leaves_list(Z)
+    ordered_names = [names[i] for i in order]
+    tm = 1.0 - dist
+    ordered = tm[np.ix_(order, order)]
+
+    with open(path, "w") as fh:
+        fh.write("\t" + "\t".join(ordered_names) + "\n")
+        for i, name in enumerate(ordered_names):
+            row = "\t".join(f"{v:.4f}" for v in ordered[i])
+            fh.write(f"{name}\t{row}\n")
+    print(f"Wrote {path}", file=sys.stderr)
+
+
+def write_summary(clusters, names, dist, summary_path):
+    """Write cluster_summary.tsv with per-cluster statistics."""
+    tm = 1.0 - dist
+    with open(summary_path, "w") as fh:
+        fh.write("cluster\tsize\tcentroid\tmean_TM\tmin_TM\tmax_TM\n")
+        for ci, members in enumerate(clusters, 1):
+            centroid = names[members[0]]
+            size = len(members)
+            if size == 1:
+                fh.write(f"{ci}\t{size}\t{centroid}\tNA\tNA\tNA\n")
+            else:
+                pair_tms = []
+                for ii in range(len(members)):
+                    for jj in range(ii + 1, len(members)):
+                        pair_tms.append(tm[members[ii], members[jj]])
+                fh.write(
+                    f"{ci}\t{size}\t{centroid}\t"
+                    f"{np.mean(pair_tms):.4f}\t{np.min(pair_tms):.4f}\t{np.max(pair_tms):.4f}\n"
+                )
+    print(f"Wrote {summary_path}", file=sys.stderr)
 
 
 def main():
@@ -272,7 +348,7 @@ def main():
         print("ERROR: need at least 2 structures to cluster", file=sys.stderr)
         sys.exit(1)
 
-    clusters = cluster_and_assign(dist, names, args)
+    clusters, Z = cluster_and_assign(dist, names, args)
 
     sizes = [len(c) for c in clusters]
     n_clusters = len(clusters)
@@ -291,6 +367,10 @@ def main():
     if args.output:
         fh.close()
         print(f"Wrote {args.output}", file=sys.stderr)
+        base = args.output.rsplit('.', 1)[0]
+        write_summary(clusters, names, dist, base + '_summary.tsv')
+        write_newick(Z, names, base + '_tree.nwk')
+        write_ordered_matrix(Z, dist, names, base + '_matrix.tsv')
 
     print(f"Total time: {time.time()-t_start:.1f}s", file=sys.stderr)
 

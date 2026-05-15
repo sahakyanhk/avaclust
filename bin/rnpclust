@@ -7,12 +7,14 @@ WD="$(cd "$(dirname "$0")" && pwd)"
 PDBDIR=""
 OUTDIR="rnpclust_out"
 CUTOFF="auto"
+ICUTOFF=""
 METHOD=0   # 0 = hierarchical (default), 1 = set_cover
 THREADS=""
+CHAINS="A,B"
 
 usage() {
   cat >&2 <<EOF
-Usage: $(basename "$0") -i <pdb_dir> [-o <output_dir>] [-c <cutoff>] [-m <method>] [-t <threads>]
+Usage: $(basename "$0") -i <pdb_dir> [-o <output_dir>] [-c <cutoff>] [-m <method>] [-I <interface_cutoff>] [-a <chains>] [-t <threads>]
 
 Options:
   -i  Input directory with .pdb files (required)
@@ -20,22 +22,26 @@ Options:
   -c  TM-score cutoff (default: auto)
       method 0: optional — cuts dendrogram at 1-cutoff; omit for auto-detection
       method 1: required — threshold for set-cover graph edges
+  -I  Cutoff in Angstroms for extracting interface residues between chains
   -m  Clustering method (default: 0)
         0 = hierarchical clustering (auto k or cutoff-based)
         1 = greedy set-cover clustering (requires -c cutoff)
+  -a  Chains to consider for alignment (default: A,B)
   -t  Number of threads for parallel USalign (default: all cores)
   -h  Show this help
 EOF
   exit 1
 }
 
-while getopts "i:o:c:m:t:h" opt; do
+while getopts "i:o:c:m:I:t:a:h" opt; do
   case "$opt" in
     i) PDBDIR="${OPTARG%/}" ;;
     o) OUTDIR="${OPTARG%/}" ;;
     c) CUTOFF="$OPTARG" ;;
+    I) ICUTOFF="$OPTARG" ;;
     m) METHOD="$OPTARG" ;;
     t) THREADS="$OPTARG" ;;
+    a) CHAINS="$OPTARG" ;;
     h) usage ;;
     *) usage ;;
   esac
@@ -53,8 +59,20 @@ echo "PDB dir:    $PDBDIR" >&2
 echo "Output dir: $OUTDIR" >&2
 echo "Method:     $( [[ "$METHOD" == "0" ]] && echo "hierarchical" || echo "set-cover" )" >&2
 echo "Cutoff:     $CUTOFF" >&2
+echo "ICutoff:    $ICUTOFF" >&2
+echo "Chains:     $CHAINS" >&2
+echo "Threads:    ${THREADS:-$(nproc)}" >&2
+
 
 mkdir -p "$OUTDIR"
+
+
+if [ -n "$ICUTOFF" ]; then
+  echo "=== Extracting interface residues with cutoff $ICUTOFF Å ===" >&2
+  python "$WD/extract_interface.py" -i "$PDBDIR" -c "$CHAINS" --cut "$ICUTOFF" -o "${PDBDIR}_i${ICUTOFF}"
+  PDBDIR="${PDBDIR}_i${ICUTOFF}"
+fi
+
 
 # ── All-vs-all alignments ──
 allvsall="$OUTDIR/all_vs_all.tsv"
@@ -65,7 +83,7 @@ if [[ -f "$allvsall" ]] && (( $(wc -l < "$allvsall") == expected_lines )); then
   echo "=== Reusing existing $allvsall ($expected_lines lines) ===" >&2
 else
   echo "=== Running all-vs-all alignments ===" >&2
-  bash "$WD/usalign_all_vs_all.bash" "$PDBDIR" "$allvsall" "$THREADS"
+  bash "$WD/usalign_all_vs_all.bash" "$PDBDIR" "$allvsall" "$CHAINS" "$THREADS"
 fi
 
 
@@ -76,11 +94,13 @@ from matplotlib import pyplot as plt
 
 df = pd.read_csv("$allvsall", sep='\t')
 plt.style.use('bmh')
+plt.figure(figsize=(10, 4))
 plt.hist(df.TM, bins=50, alpha=0.8, label='cutoff=${CUTOFF}')
+plt.xlim(0, 1)
 plt.xlabel('TM Score')
 plt.ylabel('Frequency')
 plt.title('Distribution of TM Scores')
-plt.savefig('${OUTDIR}/all_vs_all_i${CUTOFF}.png')
+plt.savefig('${OUTDIR}/all_vs_all.png')
 
 EOF
 
@@ -97,9 +117,15 @@ if [[ "$METHOD" == "0" ]]; then
   python "$WD/hierarchical_cluster.py" "$allvsall" \
                                   --col 2 \
                                   "${cutoff_args[@]}" \
+                                  --optimal-leaf-order \
                                   --pdb-dir "$PDBDIR" \
                                   -o "$OUTDIR/clusters.dat" \
                                   -sc "$OUTDIR/aligned_clusters"
+
+  echo "=== Plotting tree + heatmap ===" >&2
+  python "$WD/plot_clustermap.py" "$OUTDIR/clusters_tree.nwk" \
+                                  "$OUTDIR/clusters_matrix.tsv" \
+                                  -o "$OUTDIR/clustermap.png"
 else
   echo "=== Set-cover clustering (cutoff=$CUTOFF) ===" >&2
   python "$WD/setcover_cluster.py" "$allvsall" \

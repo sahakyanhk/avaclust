@@ -388,6 +388,62 @@ def compute_centroids(clusters, id_to_name, name_to_id, args):
     return centroids
 
 
+def write_summary(clusters, id_to_name, name_to_id, singleton_names,
+                   summary_path, args, centroids=None):
+    """Write cluster_summary.tsv with per-cluster statistics."""
+    member_to_cidx = {}
+    for cidx, (_, members) in enumerate(clusters):
+        for m in members:
+            member_to_cidx[m] = cidx
+
+    # Collect intra-cluster pairwise scores
+    pair_scores = defaultdict(list)  # cidx -> [scores]
+    scol = args.centroid_col if args.centroid_col is not None else args.col
+
+    with open(args.input, buffering=1 << 22) as fh:
+        for line in fh:
+            if not line or line[0] == '#':
+                continue
+            parts = line.split('\t')
+            try:
+                a_id = name_to_id.get(parts[args.qcol])
+                b_id = name_to_id.get(parts[args.tcol])
+            except IndexError:
+                continue
+            if a_id is None or b_id is None:
+                continue
+            ca = member_to_cidx.get(a_id)
+            cb = member_to_cidx.get(b_id)
+            if ca is None or ca != cb or a_id == b_id:
+                continue
+            try:
+                val = float(parts[scol])
+            except (IndexError, ValueError):
+                continue
+            pair_scores[ca].append(val)
+
+    with open(summary_path, "w") as fh:
+        fh.write("cluster\tsize\tcentroid\tmean_TM\tmin_TM\tmax_TM\n")
+        ci = 0
+        for cidx, (rep, members) in enumerate(clusters):
+            ci += 1
+            c = centroids[rep] if centroids else rep
+            centroid_name = id_to_name[c]
+            size = len(members)
+            scores = pair_scores.get(cidx, [])
+            if size == 1 or not scores:
+                fh.write(f"{ci}\t{size}\t{centroid_name}\tNA\tNA\tNA\n")
+            else:
+                fh.write(
+                    f"{ci}\t{size}\t{centroid_name}\t"
+                    f"{sum(scores)/len(scores):.4f}\t{min(scores):.4f}\t{max(scores):.4f}\n"
+                )
+        for i, name in enumerate(sorted(singleton_names), ci + 1):
+            fh.write(f"{i}\t1\t{name}\tNA\tNA\tNA\n")
+
+    print(f"Wrote {summary_path}", file=sys.stderr)
+
+
 def write_output(clusters, id_to_name, singleton_names, out, fmt, centroids=None):
     """Write cluster assignments. If centroids provided, use them as reps."""
     if fmt == "tsv":
@@ -467,6 +523,9 @@ def main():
     if args.output:
         fh.close()
         print(f"Wrote {args.output}", file=sys.stderr)
+        summary_path = args.output.rsplit('.', 1)[0] + '_summary.tsv'
+        write_summary(clusters, id_to_name, name_to_id, singleton_names,
+                      summary_path, args, centroids)
 
     print(f"Total time: {time.time()-t_start:.1f}s", file=sys.stderr)
 

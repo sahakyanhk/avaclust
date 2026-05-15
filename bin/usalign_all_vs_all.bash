@@ -1,9 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-DIR="${1:?Usage: $0 <pdb_dir> [output_file]}"
+DIR="${1:?Usage: $0 <pdb_dir> [output_file] [chains] [threads]}"
 DIR="${DIR%/}"
 SUFFIX=".pdb"
+CHAINS=${3:-"A,B"}
+THREADS="${4:-$(nproc)}"
 
 TMPLIST=$(mktemp /tmp/usalign_list.XXXXXX)
 trap 'rm -f "$TMPLIST"' EXIT
@@ -23,8 +25,8 @@ run_alignments() {
   local counter=0
   awk '{a[NR]=$1} END{for(i=1;i<NR;i++) for(j=i+1;j<=NR;j++) print a[i],a[j]}' \
       "$TMPLIST" \
-    | parallel --will-cite --colsep ' ' -j "$(nproc)" \
-      "USalign '${DIR}'/{1}${SUFFIX} '${DIR}'/{2}${SUFFIX} -mm 1 -ter 1 -outfmt 2 2>/dev/null | grep -v '^#'" \
+    | parallel --will-cite --colsep ' ' -j "$THREADS" \
+      "USalign '${DIR}'/{1}${SUFFIX} '${DIR}'/{2}${SUFFIX} -chain1 ${CHAINS} -chain2 ${CHAINS} -mm 1 -ter 1 -outfmt 2  2>/dev/null | grep -v '^#'" \
     | while IFS= read -r line; do
         counter=$((counter + 1))
         printf '\r%d / %d completed' "$counter" "$total" >&2
@@ -69,6 +71,5 @@ if [[ -n "${2:-}" ]]; then
 else
   run_alignments | add_tm_col
 fi
-
 
 

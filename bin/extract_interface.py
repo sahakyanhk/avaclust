@@ -19,6 +19,7 @@ Usage:
 """
 
 import argparse
+import multiprocessing
 import os
 import sys
 import time
@@ -123,6 +124,14 @@ def process_one(parser, io, pdb_path, chains, cutoff, output):
     return True
 
 
+def _process_one_worker(args):
+    """Worker for multiprocessing — creates its own parser/io per call."""
+    pdb_path, chains, cutoff, output = args
+    parser = PDBParser(QUIET=True)
+    io = PDBIO()
+    return process_one(parser, io, pdb_path, chains, cutoff, output)
+
+
 def main():
     p = argparse.ArgumentParser(
         description="Extract interface residues from PDB files"
@@ -153,6 +162,10 @@ def main():
         "-cut", "--cutoff", type=float, default=5.0,
         help="Distance cutoff in Angstroms (default: 5.0)"
     )
+    p.add_argument(
+        "-t", "--threads", type=int, default=1,
+        help="Number of parallel workers for directory/batch mode (default: 1)"
+    )
     args = p.parse_args()
 
     if args.input is None and args.batch is None:
@@ -178,13 +191,22 @@ def main():
         out_dir = args.output or (args.input.rstrip('/') + '_interface')
         os.makedirs(out_dir, exist_ok=True)
 
-        t0 = time.time()
-        n_ok = 0
+        work_items = []
         for pdb_path in pdb_files:
             base = os.path.basename(pdb_path).rsplit('.pdb', 1)[0]
             output = os.path.join(out_dir, f"{base}_interface.pdb")
-            if process_one(parser, io, pdb_path, chains, args.cutoff, output):
-                n_ok += 1
+            work_items.append((pdb_path, chains, args.cutoff, output))
+
+        t0 = time.time()
+        if args.threads > 1:
+            with multiprocessing.Pool(args.threads) as pool:
+                results = pool.map(_process_one_worker, work_items)
+            n_ok = sum(results)
+        else:
+            n_ok = 0
+            for item in work_items:
+                if _process_one_worker(item):
+                    n_ok += 1
 
         elapsed = time.time() - t0
         print(f"Done: {n_ok}/{len(pdb_files)} processed in {elapsed:.1f}s → {out_dir}", file=sys.stderr)
@@ -201,8 +223,10 @@ def main():
     else:
         # Batch mode
         t0 = time.time()
-        n_ok = 0
-        n_total = 0
+        work_items = []
+
+        if args.output:
+            os.makedirs(args.output, exist_ok=True)
 
         with open(args.batch) as fh:
             for lineno, line in enumerate(fh, 1):
@@ -212,11 +236,7 @@ def main():
 
                 parts = line.split()
                 if len(parts) == 1:
-                    # Just a PDB path — use -c default
                     pdb_path = parts[0]
-                    if args.chain is None:
-                        print(f"WARNING: skipping line {lineno}: no chains column and -c not set", file=sys.stderr)
-                        continue
                     chain_str = args.chain
                 elif len(parts) == 2:
                     pdb_path, chain_str = parts
@@ -224,8 +244,8 @@ def main():
                     print(f"WARNING: skipping line {lineno}: expected <pdb> [<chains>]", file=sys.stderr)
                     continue
 
-                chains = [c.strip() for c in chain_str.split(',')]
-                if len(chains) > 2:
+                batch_chains = [c.strip() for c in chain_str.split(',')]
+                if len(batch_chains) > 2:
                     print(f"WARNING: skipping line {lineno}: max 2 chains", file=sys.stderr)
                     continue
 
@@ -234,19 +254,26 @@ def main():
                     continue
 
                 if args.output:
-                    os.makedirs(args.output, exist_ok=True)
                     base = os.path.basename(pdb_path).rsplit('.pdb', 1)[0]
                     output = os.path.join(args.output, f"{base}_interface.pdb")
                 else:
                     base = pdb_path.rsplit('.pdb', 1)[0]
                     output = f"{base}_interface.pdb"
 
-                n_total += 1
-                if process_one(parser, io, pdb_path, chains, args.cutoff, output):
+                work_items.append((pdb_path, batch_chains, args.cutoff, output))
+
+        if args.threads > 1 and len(work_items) > 1:
+            with multiprocessing.Pool(args.threads) as pool:
+                results = pool.map(_process_one_worker, work_items)
+            n_ok = sum(results)
+        else:
+            n_ok = 0
+            for item in work_items:
+                if _process_one_worker(item):
                     n_ok += 1
 
         elapsed = time.time() - t0
-        print(f"Batch done: {n_ok}/{n_total} processed in {elapsed:.1f}s", file=sys.stderr)
+        print(f"Batch done: {n_ok}/{len(work_items)} processed in {elapsed:.1f}s", file=sys.stderr)
 
 
 if __name__ == "__main__":
