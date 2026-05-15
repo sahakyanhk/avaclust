@@ -134,6 +134,11 @@ def main():
         "--scale", type=float, default=None,
         help="Tree-scale bar length (default: auto-pick a 1/2/5 round number)"
     )
+    p.add_argument(
+        "--cutoff", type=float, default=None,
+        help="TM-score cutoff to mark on the dendrogram as a dashed line "
+             "(drawn at distance = 1 - cutoff)"
+    )
     p.add_argument("--dpi", type=int, default=150)
     args = p.parse_args()
 
@@ -189,6 +194,23 @@ def main():
 
     scale = args.scale if args.scale is not None else pick_scale(Z[:, 2].max())
     add_tree_scale(g.ax_row_dendrogram, scale)
+
+    if args.cutoff is not None:
+        x_dist = 1.0 - args.cutoff
+        g.ax_row_dendrogram.axvline(
+            x=x_dist,
+            color="red", linestyle="--", linewidth=1.0,
+        )
+        cutoff_trans = blended_transform_factory(
+            g.ax_row_dendrogram.transData,
+            g.ax_row_dendrogram.transAxes,
+        )
+        g.ax_row_dendrogram.text(
+            x_dist, 1.02,
+            f"TM={args.cutoff:g}",
+            ha="center", va="bottom", fontsize=8, color="red",
+            transform=cutoff_trans, clip_on=False,
+        )
 
     g.savefig(args.output, dpi=args.dpi, bbox_inches="tight")
     print(f"Wrote {args.output}", file=sys.stderr)

@@ -123,8 +123,11 @@ if [[ "$METHOD" == "0" ]]; then
                                   -sc "$OUTDIR/aligned_clusters"
 
   echo "=== Plotting tree + heatmap ===" >&2
+  cutoff_plot_args=()
+  [[ "$CUTOFF" != "auto" ]] && cutoff_plot_args=(--cutoff "$CUTOFF")
   python "$WD/plot_clustermap.py" "$OUTDIR/clusters_tree.nwk" \
                                   "$OUTDIR/clusters_matrix.tsv" \
+                                  "${cutoff_plot_args[@]}" \
                                   -o "$OUTDIR/clustermap.png"
 else
   echo "=== Set-cover clustering (cutoff=$CUTOFF) ===" >&2
