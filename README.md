@@ -16,9 +16,8 @@ wget https://github.com/sahakyanhk/rnpclust/archive/refs/heads/main.zip
 unzip main.zip && mv rnpclust-main rnpclust
 chmod +x rnpclust/bin/*
 
-# Add to PATH (or add to ~/.bashrc, replace $(pwd) with actual path ):
-export PATH="$PWD/rnpclust/bin:$PATH" >> ~/.bashrc
-bash
+export PATH="$PWD/rnpclust/bin:$PATH" 
+
 
 # Install Python dependencies and USalign
 pip install numpy scipy biopython
