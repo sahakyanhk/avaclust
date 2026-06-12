@@ -19,7 +19,7 @@ Usage: $(basename "$0") -i <pdb_dir> [-o <output_dir>] [-c <cutoff>] [-m <method
 Options:
   -i  Input directory with .pdb files (required)
   -o  Output directory (default: rnpclust_out)
-  -c  TM-score cutoff (default: auto)
+  -t  TM-score cutoff (default: auto)
       method 0: optional — cuts dendrogram at 1-cutoff; omit for auto-detection
       method 1: required — threshold for set-cover graph edges
   -I  Cutoff in Angstroms for extracting interface residues between chains
@@ -33,15 +33,15 @@ EOF
   exit 1
 }
 
-while getopts "i:o:c:m:I:t:a:h" opt; do
+while getopts "i:o:t:m:s:n:c:h" opt; do
   case "$opt" in
     i) PDBDIR="${OPTARG%/}" ;;
     o) OUTDIR="${OPTARG%/}" ;;
-    c) CUTOFF="$OPTARG" ;;
-    I) ICUTOFF="$OPTARG" ;;
+    t) CUTOFF="$OPTARG" ;;
+    s) ICUTOFF="$OPTARG" ;;
     m) METHOD="$OPTARG" ;;
-    t) THREADS="$OPTARG" ;;
-    a) CHAINS="$OPTARG" ;;
+    n) THREADS="$OPTARG" ;;
+    c) CHAINS="$OPTARG" ;;
     h) usage ;;
     *) usage ;;
   esac
@@ -128,6 +128,7 @@ if [[ "$METHOD" == "0" ]]; then
   python "$WD/plot_clustermap.py" "$OUTDIR/clusters_tree.nwk" \
                                   "$OUTDIR/clusters_matrix.tsv" \
                                   "${cutoff_plot_args[@]}" \
+				  --figsize 6.0 6.0 \
                                   -o "$OUTDIR/clustermap.png"
 else
   echo "=== Set-cover clustering (cutoff=$CUTOFF) ===" >&2

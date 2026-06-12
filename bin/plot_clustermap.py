@@ -114,7 +114,7 @@ def main():
         "-o", "--output", default="clustermap.png",
         help="Output figure path (default: clustermap.png)"
     )
-    p.add_argument("--cmap", default="Reds", help="Colormap (default: Reds)")
+    p.add_argument("--cmap", default="Blues", help="Colormap (default: Reds)")
     p.add_argument("--vmin", type=float, default=0.0)
     p.add_argument("--vmax", type=float, default=1.0)
     p.add_argument(
