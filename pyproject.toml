@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "avaclust"
+version = "0.2.0"
+description = "All-vs-all structural clustering of ribonucleoproteins and RNA-protein interfaces using USalign"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Harutyun Sahakyan", email = "sahakyanhk@gmail.com" }]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "scipy",
+    "biopython",
+    "matplotlib",
+    "pandas",
+    "seaborn",
+]
+
+[project.scripts]
+avaclust = "avaclust.cli:main"
+avaclust-cluster = "avaclust.cluster:main"
+avaclust-plot = "avaclust.plot:main"
+avaclust-interface = "avaclust.interface:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+avaclust = ["scripts/*.bash"]

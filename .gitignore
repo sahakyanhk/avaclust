@@ -3,4 +3,11 @@ __pycache__/
 *.pdb
 *.tsv
 *_out/
+*_clust/
 *.bak
+.DS_Store
+
+# build artifacts
+build/
+dist/
+*.egg-info/
