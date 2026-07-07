@@ -1,17 +1,16 @@
+<img width="2578" height="1334" alt="image" src="https://github.com/user-attachments/assets/39deeb99-88c6-4c93-a45b-95d41f8f72ca" />
+
 # avaclust
 
-All-vs-all comparison and clustering of molecular structures, complexes and
-interfaces.
+All-vs-all comparison and clustering of molecular structures, complexes and interfaces.
 
 
 ## Installation
 
 ```bash
-conda install -c bioconda usalign        # and: GNU parallel
-# Install the package (pulls in numpy, scipy, biopython, matplotlib, pandas, seaborn)
 pip install git+https://github.com/sahakyanhk/avaclust.git
-# or, from a local clone:
-pip install -e .
+
+conda install -c bioconda usalign     
 ```
 
 This installs the `avaclust` command (plus `avaclust-cluster`, `avaclust-plot`,
@@ -45,7 +44,7 @@ avaclust -i <pdb_dir> [-o <output_dir>] [--cutoff <TM>] [options]
 
 ```bash
 # Cut the tree at a fixed TM-score cutoff and label the leaves
-avaclust -i examples/a1_folds -o exmamples/a1_folds_clust --cutoff 0.5 
+avaclust -i examples/c2_folds.tgz -o examples/clustering_results/ --cutoff 0.75 
 
 # Cluster interfaces between chains A and B (residues within 15 Å) 
 avaclust -i complexes/ -o results --chains A,B --cutoff 0.7 --interface-cutoff 15
