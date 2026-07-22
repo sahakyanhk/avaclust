@@ -217,6 +217,7 @@ def run(input_tsv, output, cutoff=None, k=None, linkage_method="average",
     )
 
     sizes = [len(c) for c in clusters]
+    
     print(
         f"Clusters: {len(clusters)}, largest: {max(sizes)}, "
         f"singletons: {sizes.count(1)}, mean size: {round(np.mean(sizes), 3)}, total: {sum(sizes)}",
